@@ -1,0 +1,14 @@
+services:
+  backend:
+    build: ./backend
+    env_file: .env.local
+    ports: ["3001:3001"]
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:3001/api
+        VITE_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    ports: ["5173:80"]
+    depends_on: [backend]

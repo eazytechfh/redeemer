@@ -1,0 +1,11 @@
+import { ArrowDownRight, ArrowUpRight, Clock3, DollarSign, Users, Zap } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { PageHead } from "../components";
+const data=[{d:"18/07",v:14},{d:"20/07",v:23},{d:"22/07",v:19},{d:"24/07",v:31},{d:"26/07",v:27},{d:"28/07",v:42},{d:"30/07",v:38}];
+export function Dashboard(){return <><PageHead title="Visão Geral" subtitle="Acompanhe o desempenho da sua operação comercial."><select><option>Últimos 30 dias</option><option>Hoje</option><option>7 dias</option><option>90 dias</option></select></PageHead>
+<div className="metrics">{[
+  ["Total de candidatos","1.248","+12,5%",Users,"up"],["Taxa de conversão","18,7%","+3,2%",Zap,"up"],["Em negociação","R$ 384.200","-2,4%",DollarSign,"down"],["Tempo até atendimento","4min 32s","-18%",Clock3,"up"]
+].map(([l,v,c,I,t])=><div className="metric" key={l as string}><div><span>{l as string}</span><strong>{v as string}</strong><small className={t as string}>{t==="up"?<ArrowUpRight/>:<ArrowDownRight/>}{c as string} no período</small></div><i><I/></i></div>)}</div>
+<div className="dashboard-grid"><section className="card chart-card"><div className="card-title"><div><h2>Entrada de candidatos</h2><p>Novos contatos ao longo do período</p></div><b>194 candidatos</b></div><ResponsiveContainer width="100%" height={280}><AreaChart data={data}><defs><linearGradient id="red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#e5373f" stopOpacity=".28"/><stop offset="1" stopColor="#e5373f" stopOpacity="0"/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="d"/><YAxis/><Tooltip/><Area type="monotone" dataKey="v" stroke="#e5373f" strokeWidth={3} fill="url(#red)"/></AreaChart></ResponsiveContainer></section>
+<section className="card"><div className="card-title"><div><h2>Estágios do funil</h2><p>Distribuição atual</p></div></div>{[["Novo contato",328,76],["Em qualificação",256,59],["Em negociação",184,43],["Follow-up",142,33],["Matriculado",96,22]].map(x=><div className="progress" key={x[0]}><span>{x[0]}<b>{x[1]}</b></span><i><em style={{width:`${x[2]}%`}}/></i></div>)}</section></div></>}
+
