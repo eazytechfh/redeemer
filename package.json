@@ -3,12 +3,21 @@
   "private": true,
   "workspaces": ["frontend", "backend"],
   "scripts": {
-    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
-    "build": "npm run build -w backend && npm run build -w frontend",
-    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+    "dev": "vite --config vite.config.ts",
+    "dev:vercel": "vercel dev",
+    "build": "npm run build -w frontend && tsc -p api/tsconfig.json --noEmit",
+    "typecheck": "tsc -p api/tsconfig.json --noEmit && npm run typecheck -w frontend"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@types/node": "^22.13.14",
+    "@vercel/node": "^5.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vercel": "^48.8.0"
   }
 }
-
