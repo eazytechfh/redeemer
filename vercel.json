@@ -6,32 +6,16 @@
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
-      "source": "/api/users/:id/reset-password",
-      "destination": "/api/users/[id]/reset-password"
+      "source": "/api/users/:route*",
+      "destination": "/api/users?route=:route"
     },
     {
-      "source": "/api/users/:id/status",
-      "destination": "/api/users/[id]/status"
+      "source": "/api/crm/:route*",
+      "destination": "/api/crm?route=:route"
     },
     {
-      "source": "/api/crm/clients/:id/stage",
-      "destination": "/api/crm/clients/[id]/stage"
-    },
-    {
-      "source": "/api/crm/clients/:id/tags/:tagId",
-      "destination": "/api/crm/clients/[id]/tags/[tagId]"
-    },
-    {
-      "source": "/api/crm/clients/:id/tags",
-      "destination": "/api/crm/clients/[id]/tags"
-    },
-    {
-      "source": "/api/crm/tags/:id",
-      "destination": "/api/crm/tags/[id]"
-    },
-    {
-      "source": "/api/configuration/pipeline-stages/:id",
-      "destination": "/api/configuration/pipeline-stages/[id]"
+      "source": "/api/configuration/:route*",
+      "destination": "/api/configuration?route=:route"
     },
     {
       "source": "/(.*)",
@@ -39,7 +23,7 @@
     }
   ],
   "functions": {
-    "api/**/*.ts": {
+    "api/*.ts": {
       "maxDuration": 30
     }
   }
