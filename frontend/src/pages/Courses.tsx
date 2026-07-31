@@ -1,5 +1,0 @@
-import { BookOpen, Plus, Search } from "lucide-react";
-import { Badge, PageHead } from "../components";
-const courses=[["MBA em Gestão de Projetos","MBA","Gestão e Negócios","420h","R$ 890"],["Mestrado em Administração","Mestrado","Administração","720h","R$ 1.490"],["Doutorado em Ciências da Educação","Doutorado","Educação","1.200h","R$ 1.890"],["Especialização em Liderança","Especialização","Gestão e Negócios","360h","R$ 690"]];
-export function Courses(){return <><PageHead title="Cursos" subtitle="Gerencie o catálogo acadêmico da instituição."><button className="primary"><Plus/>Novo curso</button></PageHead><div className="card filters"><div className="search"><Search/><input placeholder="Buscar curso"/></div><select><option>Todos os tipos</option></select><select><option>Todos os status</option></select></div><div className="course-grid">{courses.map(c=><article className="course-card" key={c[0]}><i><BookOpen/></i><Badge tone="green">Ativo</Badge><h3>{c[0]}</h3><p>{c[2]} · {c[3]}</p><footer><span>A partir de</span><b>{c[4]}<small>/mês</small></b></footer></article>)}</div></>}
-

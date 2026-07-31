@@ -1,6 +1,6 @@
 # EduClick CRM
 
-CRM educacional para gestão de candidatos, matrículas, cursos e equipe comercial.
+CRM educacional para gestão de candidatos, matrículas e equipe comercial.
 
 ## Início rápido com Vercel
 

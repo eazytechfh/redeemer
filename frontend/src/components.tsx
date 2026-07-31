@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Columns3, GraduationCap, LayoutDashboard, LogOut, Menu, Settings, Users, X } from "lucide-react";
+import { BarChart3, Columns3, GraduationCap, LayoutDashboard, LogOut, Menu, Settings, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "./auth";
@@ -8,7 +8,6 @@ const links=[
   {to:"/",label:"Visão Geral",icon:LayoutDashboard,restricted:true},
   {to:"/candidatos",label:"Candidatos",icon:Users},
   {to:"/pipeline",label:"Pipelines",icon:Columns3},
-  {to:"/cursos",label:"Cursos",icon:BookOpen,restricted:true},
   {to:"/configuracoes",label:"Configurações",icon:Settings,restricted:true},
 ];
 export function Layout(){
