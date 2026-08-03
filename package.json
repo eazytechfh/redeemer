@@ -1,10 +1,10 @@
 {
-  "name": "educlick-crm",
+  "name": "eazyleads-crm",
   "private": true,
   "workspaces": ["frontend", "backend"],
   "scripts": {
     "dev": "vite --config vite.config.ts",
-    "dev:vercel": "vercel dev",
+    "dev:vercel": "node --env-file-if-exists=.env.local ./node_modules/vercel/dist/index.js dev",
     "build": "npm run build -w frontend && tsc -p api/tsconfig.json --noEmit",
     "typecheck": "tsc -p api/tsconfig.json --noEmit && npm run typecheck -w frontend"
   },

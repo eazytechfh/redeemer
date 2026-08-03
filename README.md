@@ -1,4 +1,4 @@
-# EduClick CRM
+# EazyLeads CRM
 
 CRM educacional para gestão de candidatos, matrículas e equipe comercial.
 

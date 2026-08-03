@@ -18,7 +18,7 @@
       "destination": "/api/configuration?route=:route"
     },
     {
-      "source": "/(.*)",
+      "source": "/:path((?!api(?:/|$)|src(?:/|$)|@vite(?:/|$)|@react-refresh(?:/|$)|@fs(?:/|$)|node_modules(?:/|$)).*)",
       "destination": "/index.html"
     }
   ],

@@ -3,6 +3,46 @@ import { z } from "zod";
 import { admin, authorize, method, parameter } from "./core";
 
 const stageKeys = ["novos_leads","em_qualificacao","transferido","agendado","orcamento_enviado","follow_up","matricula_feita","pagou","contrato_assinado","analise"] as const;
+const automatedStageKeys = ["agendado","orcamento_enviado","follow_up","matricula_feita","pagou","contrato_assinado","analise"] as const;
+const tagInput = z.object({
+  name: z.string().trim().min(1).max(50),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i),
+  linked_stage: z.enum(automatedStageKeys).nullable().optional(),
+});
+const clientUpdateInput = z.object({
+  cpf: z.string().trim().max(20).nullable().optional(),
+  birth_date: z.string().date().nullable().optional(),
+  source: z.string().trim().max(100).nullable().optional(),
+  notes: z.string().max(5000).nullable().optional(),
+  negotiation: z.object({
+    course_interest: z.string().trim().max(200).nullable(),
+    amount: z.number().nonnegative().nullable(),
+    consultant_id: z.string().uuid().nullable(),
+  }).optional(),
+});
+
+const schemaPending = (error: { code?: string } | null) =>
+  !!error && ["42703", "PGRST204", "PGRST205"].includes(error.code || "");
+
+async function audit(
+  cliente_id: number,
+  user_id: string,
+  changes: { field: string; oldValue: unknown; newValue: unknown; action?: string }[],
+) {
+  const rows = changes
+    .filter(change => change.oldValue !== change.newValue)
+    .map(change => ({
+      cliente_id,
+      user_id,
+      action: change.action || "field_updated",
+      field: change.field,
+      old_value: change.oldValue,
+      new_value: change.newValue,
+    }));
+  if (!rows.length) return null;
+  const result = await admin.from("logs").insert(rows);
+  return result.error;
+}
 
 export async function clients(req: VercelRequest, res: VercelResponse) {
   if (!method(req, res, ["GET"])) return;
@@ -26,10 +66,94 @@ export async function clientStage(req: VercelRequest, res: VercelResponse) {
   const stage = z.enum(stageKeys).safeParse(req.body?.stage);
   if (!stage.success) return res.status(400).json({ error: "Etapa inválida." });
   const id = parameter(req.query.id);
+  const current = await admin.from("Clientes").select("id,estagio_lead").eq("id", id).single();
+  if (current.error) return res.status(404).json({ error: "Candidato não encontrado." });
   const result = await admin.from("Clientes").update({ estagio_lead: stage.data }).eq("id", id).select().single();
   if (result.error) return res.status(400).json({ error: result.error.message });
+  const auditError = await audit(Number(id), actor.id, [{
+    field: "estagio_lead",
+    oldValue: current.data.estagio_lead,
+    newValue: stage.data,
+    action: "stage_changed",
+  }]);
+  if (auditError) console.error("[pipeline:audit]", auditError);
   console.info(`[pipeline] Cliente ${id} movido para ${stage.data} por ${actor.id}`);
   res.json(result.data);
+}
+
+export async function consultants(req: VercelRequest, res: VercelResponse) {
+  if (!method(req, res, ["GET"])) return;
+  if (!await authorize(req, res)) return;
+  const result = await admin.from("users").select("id,name").eq("role", "consultor").eq("status", "ativo").order("name");
+  return result.error ? res.status(400).json({ error: result.error.message }) : res.json(result.data || []);
+}
+
+export async function clientDetails(req: VercelRequest, res: VercelResponse) {
+  if (!method(req, res, ["GET", "PATCH", "DELETE"])) return;
+  const actor = await authorize(req, res);
+  if (!actor) return;
+  const clienteId = Number(parameter(req.query.id));
+  if (!Number.isSafeInteger(clienteId)) return res.status(400).json({ error: "Candidato inválido." });
+
+  if (req.method === "DELETE") {
+    const result = await admin.from("Clientes").delete().eq("id", clienteId).select("id").maybeSingle();
+    if (result.error) return res.status(400).json({ error: result.error.message });
+    return result.data ? res.status(204).end() : res.status(404).json({ error: "Candidato não encontrado." });
+  }
+
+  const clientResult = await admin.from("Clientes").select("*").eq("id", clienteId).single();
+  if (clientResult.error) return res.status(404).json({ error: "Candidato não encontrado." });
+
+  if (req.method === "GET") {
+    const [negotiationResult, logsResult] = await Promise.all([
+      admin.from("negotiations").select("*").eq("cliente_id", clienteId).maybeSingle(),
+      admin.from("logs").select("*,user:users(name)").eq("cliente_id", clienteId).order("created_at", { ascending: false }),
+    ]);
+    if (negotiationResult.error && !schemaPending(negotiationResult.error))
+      return res.status(400).json({ error: negotiationResult.error.message });
+    if (logsResult.error && !schemaPending(logsResult.error))
+      return res.status(400).json({ error: logsResult.error.message });
+    return res.json({
+      client: clientResult.data,
+      negotiation: negotiationResult.error ? null : negotiationResult.data,
+      logs: logsResult.error ? [] : logsResult.data || [],
+      schemaPending: schemaPending(negotiationResult.error) || schemaPending(logsResult.error),
+    });
+  }
+
+  const parsed = clientUpdateInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Revise os dados do candidato." });
+  const { negotiation, ...clientChanges } = parsed.data;
+  const normalizedClientChanges = Object.fromEntries(
+    Object.entries(clientChanges).map(([key, value]) => [key, value === "" ? null : value]),
+  );
+  const clientAudit = Object.entries(normalizedClientChanges).map(([field, newValue]) => ({
+    field,
+    oldValue: clientResult.data[field],
+    newValue,
+  }));
+  if (Object.keys(normalizedClientChanges).length) {
+    const update = await admin.from("Clientes").update(normalizedClientChanges).eq("id", clienteId).select().single();
+    if (update.error) return res.status(400).json({ error: update.error.message });
+  }
+
+  const negotiationAudit: { field: string; oldValue: unknown; newValue: unknown }[] = [];
+  if (negotiation) {
+    const currentNegotiation = await admin.from("negotiations").select("*").eq("cliente_id", clienteId).maybeSingle();
+    if (currentNegotiation.error) return res.status(400).json({ error: currentNegotiation.error.message });
+    for (const [field, newValue] of Object.entries(negotiation)) {
+      negotiationAudit.push({ field, oldValue: currentNegotiation.data?.[field] ?? null, newValue });
+    }
+    const values = { ...negotiation, cliente_id: clienteId, status: currentNegotiation.data?.status || "ativa" };
+    const saved = currentNegotiation.data
+      ? await admin.from("negotiations").update(values).eq("id", currentNegotiation.data.id)
+      : await admin.from("negotiations").insert(values);
+    if (saved.error) return res.status(400).json({ error: saved.error.message });
+  }
+
+  const auditError = await audit(clienteId, actor.id, [...clientAudit, ...negotiationAudit]);
+  if (auditError) return res.status(500).json({ error: "Os dados foram salvos, mas não foi possível registrar o histórico." });
+  return res.json({ message: "Dados do candidato atualizados." });
 }
 
 export async function tags(req: VercelRequest, res: VercelResponse) {
@@ -39,19 +163,28 @@ export async function tags(req: VercelRequest, res: VercelResponse) {
     const result = await admin.from("tags").select("*").order("name");
     return result.error ? res.status(400).json({ error: result.error.message }) : res.json(result.data);
   }
-  const parsed = z.object({ name: z.string().min(1).max(50), color: z.string().regex(/^#[0-9a-f]{6}$/i) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Nome ou cor inválidos." });
+  const parsed = tagInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Nome, cor ou etapa inválidos." });
   const result = await admin.from("tags").insert(parsed.data).select().single();
   return result.error
-    ? res.status(400).json({ error: result.error.code === "23505" ? "Já existe uma etiqueta com esse nome." : result.error.message })
+    ? res.status(400).json({ error: result.error.code === "23505" ? "Nome ou etapa já vinculados a outra etiqueta." : result.error.message })
     : res.status(201).json(result.data);
 }
 
 export async function tagById(req: VercelRequest, res: VercelResponse) {
-  if (!method(req, res, ["DELETE"])) return;
+  if (!method(req, res, ["PATCH", "DELETE"])) return;
   if (!await authorize(req, res)) return;
-  const result = await admin.from("tags").delete().eq("id", parameter(req.query.id));
-  return result.error ? res.status(400).json({ error: result.error.message }) : res.status(204).end();
+  const id = parameter(req.query.id);
+  if (req.method === "DELETE") {
+    const result = await admin.from("tags").delete().eq("id", id);
+    return result.error ? res.status(400).json({ error: result.error.message }) : res.status(204).end();
+  }
+  const parsed = tagInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Nome, cor ou etapa inválidos." });
+  const result = await admin.from("tags").update(parsed.data).eq("id", id).select().single();
+  return result.error
+    ? res.status(400).json({ error: result.error.code === "23505" ? "Nome ou etapa já vinculados a outra etiqueta." : result.error.message })
+    : res.json(result.data);
 }
 
 export async function clientTags(req: VercelRequest, res: VercelResponse) {

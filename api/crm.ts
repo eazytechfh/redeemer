@@ -1,10 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { clientStage, clientTag, clientTags, clients, tagById, tags } from "./_lib/crm";
+import { clientDetails, clientStage, clientTag, clientTags, clients, consultants, tagById, tags } from "./_lib/crm";
 import { parameter } from "./_lib/core";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const route = (parameter(req.query.route) || "").replace(/^\/|\/$/g, "");
   if (route === "clients") return clients(req, res);
+  if (route === "consultants") return consultants(req, res);
   if (route === "tags") return tags(req, res);
 
   const stage = route.match(/^clients\/([^/]+)\/stage$/);
@@ -24,6 +25,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (clientTagsRoute) {
     req.query.id = clientTagsRoute[1];
     return clientTags(req, res);
+  }
+
+  const client = route.match(/^clients\/([^/]+)$/);
+  if (client) {
+    req.query.id = client[1];
+    return clientDetails(req, res);
   }
 
   const tag = route.match(/^tags\/([^/]+)$/);

@@ -7,7 +7,12 @@ export const roleLabel: Record<Role,string> = { consultor:"Consultor", gestor:"G
 export async function api<T>(path:string, init?:RequestInit):Promise<T> {
   const { data } = await supabase.auth.getSession();
   const response = await fetch(`${API}${path}`, { ...init, headers:{ "Content-Type":"application/json", Authorization:`Bearer ${data.session?.access_token}`, ...init?.headers }});
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "Não foi possível concluir a solicitação.");
-  return body;
+  const text = await response.text();
+  let body: any = null;
+  if (text) {
+    try { body = JSON.parse(text); }
+    catch { throw new Error(response.ok ? "A API retornou uma resposta inválida." : text); }
+  }
+  if (!response.ok) throw new Error(body?.error || "Não foi possível concluir a solicitação.");
+  return body as T;
 }

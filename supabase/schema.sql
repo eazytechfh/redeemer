@@ -29,7 +29,13 @@ create table public.students_leads (
   notes text, ai_active boolean not null default true, inside_business_hours boolean,
   first_response_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
-create table public.tags (id uuid primary key default gen_random_uuid(), name text unique not null, color text not null default '#64748b');
+create table public.tags (
+  id uuid primary key default gen_random_uuid(),
+  name text unique not null,
+  color text not null default '#64748b',
+  linked_stage text check (linked_stage is null or linked_stage in ('agendado','orcamento_enviado','follow_up','matricula_feita','pagou','contrato_assinado','analise'))
+);
+create unique index tags_linked_stage_unique on public.tags(linked_stage) where linked_stage is not null;
 create table public.lead_tags (lead_id uuid references public.students_leads(id) on delete cascade, tag_id uuid references public.tags(id) on delete cascade, primary key(lead_id,tag_id));
 create table public.negotiations (
   id uuid primary key default gen_random_uuid(), lead_id uuid not null references public.students_leads(id) on delete cascade,
