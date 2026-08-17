@@ -284,3 +284,83 @@ export async function clientTag(req: VercelRequest, res: VercelResponse) {
   const result = await admin.from("clientes_tags").delete().eq("cliente_id", cliente_id).eq("tag_id", tag_id);
   return result.error ? res.status(400).json({ error: result.error.message }) : res.status(204).end();
 }
+
+const finalStageKeys = new Set(["matricula_feita", "pagou", "contrato_assinado"]);
+const rangeDays: Record<string, number | null> = { "30": 30, "90": 90, all: null };
+
+export async function dashboard(req: VercelRequest, res: VercelResponse) {
+  if (!method(req, res, ["GET"])) return;
+  if (!await authorize(req, res)) return;
+
+  const rangeParam = parameter(req.query.range) || "30";
+  const days = Object.prototype.hasOwnProperty.call(rangeDays, rangeParam) ? rangeDays[rangeParam] : 30;
+  const since = days == null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  let clientsQuery = admin.from("Clientes").select("id,created_at,estagio_lead").order("created_at", { ascending: true });
+  if (since) clientsQuery = clientsQuery.gte("created_at", since);
+  const clientsResult = await clientsQuery;
+  if (clientsResult.error) return res.status(400).json({ error: clientsResult.error.message });
+  const rows = clientsResult.data || [];
+  const ids = rows.map(r => r.id);
+
+  const [stagesResult, negotiationsResult, logsResult] = await Promise.all([
+    admin.from("pipeline_stages").select("stable_key,name,color,position").in("stable_key", stageKeys).order("position"),
+    ids.length
+      ? admin.from("negotiations").select("cliente_id,amount,status").in("cliente_id", ids)
+      : Promise.resolve({ data: [] as any[], error: null as any }),
+    ids.length
+      ? admin.from("logs").select("cliente_id,created_at").in("cliente_id", ids).eq("action", "stage_changed").order("created_at", { ascending: true })
+      : Promise.resolve({ data: [] as any[], error: null as any }),
+  ]);
+  if (stagesResult.error) return res.status(400).json({ error: stagesResult.error.message });
+  if (negotiationsResult.error && !schemaPending(negotiationsResult.error)) return res.status(400).json({ error: negotiationsResult.error.message });
+  if (logsResult.error && !schemaPending(logsResult.error)) return res.status(400).json({ error: logsResult.error.message });
+
+  const total = rows.length;
+  const converted = rows.filter(r => finalStageKeys.has(r.estagio_lead || "")).length;
+  const conversionRate = total ? Number(((converted / total) * 100).toFixed(1)) : 0;
+
+  const negotiationAmount = ((negotiationsResult.data || []) as any[])
+    .filter(n => n.status === "ativa")
+    .reduce((sum, n) => sum + (Number(n.amount) || 0), 0);
+
+  const createdById = new Map(rows.map(r => [r.id, r.created_at]));
+  const firstMovementByClient = new Map<number, string>();
+  for (const log of (logsResult.data || []) as any[]) {
+    if (!firstMovementByClient.has(log.cliente_id)) firstMovementByClient.set(log.cliente_id, log.created_at);
+  }
+  const attendanceDiffsMinutes: number[] = [];
+  for (const [clienteId, movedAt] of firstMovementByClient) {
+    const createdAt = createdById.get(clienteId);
+    if (!createdAt) continue;
+    const diff = (new Date(movedAt).getTime() - new Date(createdAt).getTime()) / 60000;
+    if (diff >= 0) attendanceDiffsMinutes.push(diff);
+  }
+  const avgAttendanceMinutes = attendanceDiffsMinutes.length
+    ? attendanceDiffsMinutes.reduce((a, b) => a + b, 0) / attendanceDiffsMinutes.length
+    : null;
+
+  const seriesMap = new Map<string, number>();
+  for (const row of rows) {
+    const day = (row.created_at || "").slice(0, 10);
+    if (!day) continue;
+    seriesMap.set(day, (seriesMap.get(day) || 0) + 1);
+  }
+  const series = Array.from(seriesMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
+
+  const countByStage = new Map<string, number>();
+  for (const row of rows) {
+    const key = row.estagio_lead || "novos_leads";
+    countByStage.set(key, (countByStage.get(key) || 0) + 1);
+  }
+  const stageCounts = (stagesResult.data || []).map((s: any) => ({
+    stage: s.stable_key,
+    name: s.name,
+    color: s.color,
+    count: countByStage.get(s.stable_key) || 0,
+  }));
+
+  res.json({ total, conversionRate, negotiationAmount, avgAttendanceMinutes, series, stageCounts });
+}

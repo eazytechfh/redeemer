@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { clientDetails, clientStage, clientTag, clientTags, clients, consultants, tagById, tags } from "./_lib/crm";
+import { clientDetails, clientStage, clientTag, clientTags, clients, consultants, dashboard, tagById, tags } from "./_lib/crm";
 import { parameter } from "./_lib/core";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -7,6 +7,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (route === "clients") return clients(req, res);
   if (route === "consultants") return consultants(req, res);
   if (route === "tags") return tags(req, res);
+  if (route === "dashboard") return dashboard(req, res);
 
   const stage = route.match(/^clients\/([^/]+)\/stage$/);
   if (stage) {

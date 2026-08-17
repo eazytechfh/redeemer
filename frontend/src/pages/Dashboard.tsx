@@ -1,11 +1,83 @@
-import { ArrowDownRight, ArrowUpRight, Clock3, DollarSign, Users, Zap } from "lucide-react";
+import { Clock3, DollarSign, Users, Zap } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useState } from "react";
 import { PageHead } from "../components";
-const data=[{d:"18/07",v:14},{d:"20/07",v:23},{d:"22/07",v:19},{d:"24/07",v:31},{d:"26/07",v:27},{d:"28/07",v:42},{d:"30/07",v:38}];
-export function Dashboard(){return <><PageHead title="Visão Geral" subtitle="Acompanhe o desempenho da sua operação comercial."><select><option>Últimos 30 dias</option><option>Hoje</option><option>7 dias</option><option>90 dias</option></select></PageHead>
-<div className="metrics">{[
-  ["Total de candidatos","1.248","+12,5%",Users,"up"],["Taxa de conversão","18,7%","+3,2%",Zap,"up"],["Em negociação","R$ 384.200","-2,4%",DollarSign,"down"],["Tempo até atendimento","4min 32s","-18%",Clock3,"up"]
-].map(([l,v,c,I,t])=><div className="metric" key={l as string}><div><span>{l as string}</span><strong>{v as string}</strong><small className={t as string}>{t==="up"?<ArrowUpRight/>:<ArrowDownRight/>}{c as string} no período</small></div><i><I/></i></div>)}</div>
-<div className="dashboard-grid"><section className="card chart-card"><div className="card-title"><div><h2>Entrada de candidatos</h2><p>Novos contatos ao longo do período</p></div><b>194 candidatos</b></div><ResponsiveContainer width="100%" height={280}><AreaChart data={data}><defs><linearGradient id="red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#e5373f" stopOpacity=".28"/><stop offset="1" stopColor="#e5373f" stopOpacity="0"/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="d"/><YAxis/><Tooltip/><Area type="monotone" dataKey="v" stroke="#e5373f" strokeWidth={3} fill="url(#red)"/></AreaChart></ResponsiveContainer></section>
-<section className="card"><div className="card-title"><div><h2>Estágios do funil</h2><p>Distribuição atual</p></div></div>{[["Novo contato",328,76],["Em qualificação",256,59],["Em negociação",184,43],["Follow-up",142,33],["Matriculado",96,22]].map(x=><div className="progress" key={x[0]}><span>{x[0]}<b>{x[1]}</b></span><i><em style={{width:`${x[2]}%`}}/></i></div>)}</section></div></>}
+import { api } from "../lib";
 
+type Range = "30" | "90" | "all";
+type StageCount = { stage:string; name:string; color:string; count:number };
+type DashboardData = {
+  total:number; conversionRate:number; negotiationAmount:number; avgAttendanceMinutes:number|null;
+  series:{date:string;count:number}[]; stageCounts:StageCount[];
+};
+const empty:DashboardData = { total:0, conversionRate:0, negotiationAmount:0, avgAttendanceMinutes:null, series:[], stageCounts:[] };
+
+const currency = (value:number) => value.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const formatDay = (date:string) => { const [,m,d] = date.split("-"); return `${d}/${m}`; };
+const formatMinutes = (minutes:number|null) => {
+  if (minutes == null) return "Não disponível";
+  const total = Math.round(minutes);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  return hours ? `${hours}h ${mins}min` : `${mins}min`;
+};
+
+export function Dashboard(){
+  const [range,setRange] = useState<Range>("30");
+  const [data,setData] = useState<DashboardData>(empty);
+  const [error,setError] = useState("");
+  const [loading,setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true); setError("");
+    api<DashboardData>(`/crm/dashboard?range=${range}`)
+      .then(setData)
+      .catch(e => setError((e as Error).message))
+      .finally(() => setLoading(false));
+  }, [range]);
+
+  const metrics: [string,string,typeof Users][] = [
+    ["Total de candidatos", String(data.total), Users],
+    ["Taxa de conversão", `${data.conversionRate.toLocaleString("pt-BR")}%`, Zap],
+    ["Em negociação", currency(data.negotiationAmount), DollarSign],
+    ["Tempo até atendimento", formatMinutes(data.avgAttendanceMinutes), Clock3],
+  ];
+  const maxStageCount = Math.max(1, ...data.stageCounts.map(s => s.count));
+
+  return <>
+    <PageHead title="Visão Geral" subtitle="Acompanhe o desempenho da sua operação comercial.">
+      <select value={range} onChange={e => setRange(e.target.value as Range)}>
+        <option value="30">Últimos 30 dias</option>
+        <option value="90">90 dias</option>
+        <option value="all">Todos</option>
+      </select>
+    </PageHead>
+    {error && <div className="alert error">{error}</div>}
+    <div className="metrics">
+      {metrics.map(([label,value,Icon]) => <div className="metric" key={label}>
+        <div><span>{label}</span><strong>{loading ? "…" : value}</strong></div>
+        <i><Icon/></i>
+      </div>)}
+    </div>
+    <div className="dashboard-grid">
+      <section className="card chart-card">
+        <div className="card-title"><div><h2>Entrada de candidatos</h2><p>Novos contatos ao longo do período</p></div><b>{data.total} candidato{data.total===1?"":"s"}</b></div>
+        {data.series.length ? <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={data.series.map(s => ({d:formatDay(s.date),v:s.count}))}>
+            <defs><linearGradient id="red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#e5373f" stopOpacity=".28"/><stop offset="1" stopColor="#e5373f" stopOpacity="0"/></linearGradient></defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false}/>
+            <XAxis dataKey="d"/><YAxis allowDecimals={false}/><Tooltip/>
+            <Area type="monotone" dataKey="v" stroke="#e5373f" strokeWidth={3} fill="url(#red)"/>
+          </AreaChart>
+        </ResponsiveContainer> : <div className="drawer-loading">Nenhum cadastro no período selecionado.</div>}
+      </section>
+      <section className="card">
+        <div className="card-title"><div><h2>Estágios do funil</h2><p>Distribuição atual</p></div></div>
+        {data.stageCounts.length ? data.stageCounts.map(s => <div className="progress" key={s.stage}>
+          <span>{s.name}<b>{s.count}</b></span>
+          <i><em style={{width:`${(s.count/maxStageCount)*100}%`,background:s.color}}/></i>
+        </div>) : <div className="drawer-loading">Nenhum lead cadastrado.</div>}
+      </section>
+    </div>
+  </>;
+}
