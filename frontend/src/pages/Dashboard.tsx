@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { PageHead } from "../components";
 import { api } from "../lib";
 
-type Range = "30" | "90" | "all";
+type Range = "today" | "7" | "30" | "90" | "custom";
 type StageCount = { stage:string; name:string; color:string; count:number };
 type DashboardData = {
   total:number; conversionRate:number; negotiationAmount:number; avgAttendanceMinutes:number|null;
@@ -24,17 +24,22 @@ const formatMinutes = (minutes:number|null) => {
 
 export function Dashboard(){
   const [range,setRange] = useState<Range>("30");
+  const [dateFrom,setDateFrom] = useState("");
+  const [dateTo,setDateTo] = useState("");
   const [data,setData] = useState<DashboardData>(empty);
   const [error,setError] = useState("");
   const [loading,setLoading] = useState(true);
 
   useEffect(() => {
+    if (range === "custom" && (!dateFrom || !dateTo)) return;
     setLoading(true); setError("");
-    api<DashboardData>(`/crm/dashboard?range=${range}`)
+    const qs = new URLSearchParams({ range });
+    if (range === "custom") { qs.set("dateFrom", dateFrom); qs.set("dateTo", dateTo); }
+    api<DashboardData>(`/crm/dashboard?${qs}`)
       .then(setData)
       .catch(e => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, [range]);
+  }, [range, dateFrom, dateTo]);
 
   const metrics: [string,string,typeof Users][] = [
     ["Total de candidatos", String(data.total), Users],
@@ -47,10 +52,16 @@ export function Dashboard(){
   return <>
     <PageHead title="Visão Geral" subtitle="Acompanhe o desempenho da sua operação comercial.">
       <select value={range} onChange={e => setRange(e.target.value as Range)}>
-        <option value="30">Últimos 30 dias</option>
+        <option value="today">Hoje</option>
+        <option value="7">7 dias</option>
+        <option value="30">30 dias</option>
         <option value="90">90 dias</option>
-        <option value="all">Todos</option>
+        <option value="custom">Personalizado</option>
       </select>
+      {range === "custom" && <div className="date-filter">
+        <label>De<input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}/></label>
+        <label>Até<input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}/></label>
+      </div>}
     </PageHead>
     {error && <div className="alert error">{error}</div>}
     <div className="metrics">

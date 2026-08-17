@@ -286,18 +286,41 @@ export async function clientTag(req: VercelRequest, res: VercelResponse) {
 }
 
 const finalStageKeys = new Set(["matricula_feita", "pagou", "contrato_assinado"]);
-const rangeDays: Record<string, number | null> = { "30": 30, "90": 90, all: null };
+const presetRangeDays: Record<string, number> = { "7": 7, "30": 30, "90": 90 };
+
+function parseDateBoundary(value: string | undefined, endOfDay: boolean): Date | null | "invalid" {
+  if (!value) return null;
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const iso = isDateOnly ? `${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z` : value;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "invalid" : date;
+}
 
 export async function dashboard(req: VercelRequest, res: VercelResponse) {
   if (!method(req, res, ["GET"])) return;
   if (!await authorize(req, res)) return;
 
   const rangeParam = parameter(req.query.range) || "30";
-  const days = Object.prototype.hasOwnProperty.call(rangeDays, rangeParam) ? rangeDays[rangeParam] : 30;
-  const since = days == null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  let since: string | null = null;
+  let until: string | null = null;
+
+  if (rangeParam === "today") {
+    since = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`).toISOString();
+  } else if (rangeParam === "custom") {
+    const fromDate = parseDateBoundary(parameter(req.query.dateFrom), false);
+    const toDate = parseDateBoundary(parameter(req.query.dateTo), true);
+    if (fromDate === "invalid" || toDate === "invalid") return res.status(400).json({ error: "Datas inválidas." });
+    since = fromDate ? fromDate.toISOString() : null;
+    until = toDate ? toDate.toISOString() : null;
+  } else if (presetRangeDays[rangeParam]) {
+    since = new Date(Date.now() - presetRangeDays[rangeParam] * 24 * 60 * 60 * 1000).toISOString();
+  } else {
+    since = new Date(Date.now() - presetRangeDays["30"] * 24 * 60 * 60 * 1000).toISOString();
+  }
 
   let clientsQuery = admin.from("Clientes").select("id,created_at,estagio_lead").order("created_at", { ascending: true });
   if (since) clientsQuery = clientsQuery.gte("created_at", since);
+  if (until) clientsQuery = clientsQuery.lte("created_at", until);
   const clientsResult = await clientsQuery;
   if (clientsResult.error) return res.status(400).json({ error: clientsResult.error.message });
   const rows = clientsResult.data || [];

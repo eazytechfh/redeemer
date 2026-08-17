@@ -2,6 +2,7 @@ import { Download, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { PageHead, ToastStack, useToasts } from "../components";
 import { api } from "../lib";
+import { ClientDrawer } from "./Pipeline";
 
 type Zone = "Zona Cinza" | "Zona Verde";
 type TagType = { id:string; name:string; color:string };
@@ -31,6 +32,7 @@ export function Candidates(){
   const [error,setError] = useState("");
   const [loading,setLoading] = useState(true);
   const [showNew,setShowNew] = useState(false);
+  const [selected,setSelected] = useState<Client|null>(null);
   const {toasts,push} = useToasts();
 
   const load = async () => {
@@ -123,12 +125,12 @@ export function Candidates(){
     <div className="table-card">
       <div className="table-top"><b>{filtered.length} lead{filtered.length===1?"":"s"} encontrado{filtered.length===1?"":"s"}</b></div>
       <div className="table-scroll">
-        <table>
+        <table className="clickable-rows">
           <thead><tr><th>Lead</th><th>Zona</th><th>Consultor</th><th>Curso de interesse</th><th>Estágio</th><th>Valor</th></tr></thead>
           <tbody>
             {!loading && filtered.map(c => {
               const stage = stageInfo(c.estagio_lead);
-              return <tr key={c.id}>
+              return <tr key={c.id} onClick={() => setSelected(c)}>
                 <td><b>{clientName(c)}</b><small>{c["Numero do cliente"] || "Telefone não informado"} · {new Date(c.created_at).toLocaleDateString("pt-BR")}</small></td>
                 <td>{c.ZONA || "Não informada"}</td>
                 <td>{c.consultant_name || "Não atribuído"}</td>
@@ -144,6 +146,7 @@ export function Candidates(){
       </div>
     </div>
     {showNew && <NewLeadModal stages={stages} consultants={consultants} onClose={() => setShowNew(false)} onCreated={() => { void load(); push("Lead criado com sucesso.", "success"); }} onError={(msg) => push(msg, "error")}/>}
+    {selected && <ClientDrawer client={selected} onClose={() => setSelected(null)} onChanged={() => void load()}/>}
     <ToastStack toasts={toasts}/>
   </>;
 }

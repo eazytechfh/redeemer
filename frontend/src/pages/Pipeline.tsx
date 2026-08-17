@@ -5,7 +5,7 @@ import { api } from "../lib";
 
 type Zone = "Zona Cinza" | "Zona Verde";
 type TagType = { id:string; name:string; color:string };
-type Client = {
+export type Client = {
   id:number; created_at:string; "Numero do cliente"?:string; "nome do cliente"?:string;
   Cliente?:string; estagio_lead?:string|null; ZONA?:string; resumo_qualificacao?:string;
   cpf?:string|null; birth_date?:string|null; source?:string|null; notes?:string|null;
@@ -47,12 +47,12 @@ export function Pipeline(){
     const goToPage=(p:number)=>setPages(prev=>({...prev,[key]:p}));
     return <section className="kanban-col" key={key} onDragOver={e=>e.preventDefault()} onDrop={e=>void move(Number(e.dataTransfer.getData("client")),key)}>
       <header style={{borderColor:color}}><b>{label}</b><span>{items.length}</span></header>
+      <div className="kanban-pager"><button className="secondary" disabled={page<=1} onClick={()=>goToPage(page-1)}>{"< Anterior"}</button><span>Página {page} de {totalPages}</span><button className="secondary" disabled={page>=totalPages} onClick={()=>goToPage(page+1)}>{"Próxima >"}</button></div>
       <div className="kanban-col-body">{pageItems.map(c=><article className="lead-card" draggable onDragStart={e=>e.dataTransfer.setData("client",String(c.id))} onClick={()=>setSelected(c)} key={c.id}><div><span className="avatar mini">{clientName(c).slice(0,2).toUpperCase()}</span><b>{clientName(c)}</b></div><p>{c["Numero do cliente"]||"Telefone não informado"}</p><div className="card-tags">{c.tags?.map(t=><span key={t.id} style={{backgroundColor:`${t.color}20`,color:t.color}}>{t.name}</span>)}</div><footer><small>{new Date(c.created_at).toLocaleDateString("pt-BR")}</small><span>#{c.id}</span></footer></article>)}</div>
-      <footer className="kanban-pager"><button className="secondary" disabled={page<=1} onClick={()=>goToPage(page-1)}>{"< Anterior"}</button><span>Página {page} de {totalPages}</span><button className="secondary" disabled={page>=totalPages} onClick={()=>goToPage(page+1)}>{"Próxima >"}</button></footer>
     </section>
   })}</div>{selected&&<ClientDrawer client={selected} onClose={()=>setSelected(null)} onChanged={()=>zone&&load(zone)}/>}</>
 }
-function ClientDrawer({client,onClose,onChanged}:{client:Client;onClose:()=>void;onChanged:()=>void}){
+export function ClientDrawer({client,onClose,onChanged}:{client:Client;onClose:()=>void;onChanged:()=>void}){
  const emptyNegotiation={course_interest:"",amount:"",consultant_id:""};
  const [details,setDetails]=useState<ClientDetails>({client,negotiation:null,logs:[]});
  const [tags,setTags]=useState<TagType[]>([]);const [consultants,setConsultants]=useState<Consultant[]>([]);
