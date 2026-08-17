@@ -6,7 +6,7 @@ import { api, roleLabel } from "./lib";
 
 const links=[
   {to:"/",label:"Visão Geral",icon:LayoutDashboard,restricted:true},
-  {to:"/candidatos",label:"Candidatos",icon:Users},
+  {to:"/candidatos",label:"Leads",icon:Users},
   {to:"/pipeline",label:"Pipelines",icon:Columns3},
   {to:"/configuracoes",label:"Configurações",icon:Settings,restricted:true},
 ];
@@ -24,3 +24,12 @@ export function Layout(){
 export function PageHead({title,subtitle,children}:{title:string;subtitle:string;children?:React.ReactNode}){return <div className="page-head"><div><h1>{title}</h1><p>{subtitle}</p></div><div className="actions">{children}</div></div>}
 export function Badge({children,tone="neutral"}:{children:React.ReactNode;tone?:string}){return <span className={`badge ${tone}`}>{children}</span>}
 export function Empty({title,text}:{title:string;text:string}){return <div className="empty"><BarChart3/><h3>{title}</h3><p>{text}</p></div>}
+
+export type ToastTone="success"|"error";
+export type ToastItem={id:number;text:string;tone:ToastTone};
+export function useToasts(){
+  const [toasts,setToasts]=useState<ToastItem[]>([]);
+  const push=(text:string,tone:ToastTone="success")=>{const id=Date.now()+Math.random();setToasts(t=>[...t,{id,text,tone}]);setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),4000)};
+  return {toasts,push};
+}
+export function ToastStack({toasts}:{toasts:ToastItem[]}){return <div className="toast-stack">{toasts.map(t=><div key={t.id} className={`toast ${t.tone}`}>{t.text}</div>)}</div>}

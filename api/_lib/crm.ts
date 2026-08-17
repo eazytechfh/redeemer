@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { z } from "zod";
-import { admin, authorize, method, parameter } from "./core";
+import { admin, authorize, method, parameter, type AppUser } from "./core";
 
 const stageKeys = ["novos_leads","em_qualificacao","transferido","agendado","orcamento_enviado","follow_up","matricula_feita","pagou","contrato_assinado","analise"] as const;
 const automatedStageKeys = ["agendado","orcamento_enviado","follow_up","matricula_feita","pagou","contrato_assinado","analise"] as const;
@@ -8,6 +8,15 @@ const tagInput = z.object({
   name: z.string().trim().min(1).max(50),
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   linked_stage: z.enum(automatedStageKeys).nullable().optional(),
+});
+const clientCreateInput = z.object({
+  name: z.string().trim().min(1).max(200),
+  phone: z.string().trim().min(1).max(30),
+  email: z.string().trim().max(200).nullable().optional(),
+  zone: z.enum(["Zona Cinza", "Zona Verde"]),
+  consultant_id: z.string().uuid().nullable().optional(),
+  course_interest: z.string().trim().max(200).nullable().optional(),
+  stage: z.enum(stageKeys),
 });
 const clientUpdateInput = z.object({
   cpf: z.string().trim().max(20).nullable().optional(),
@@ -45,18 +54,86 @@ async function audit(
 }
 
 export async function clients(req: VercelRequest, res: VercelResponse) {
-  if (!method(req, res, ["GET"])) return;
-  if (!await authorize(req, res)) return;
-  const zone = z.enum(["Zona Cinza", "Zona Verde"]).safeParse(parameter(req.query.zone));
-  if (!zone.success) return res.status(400).json({ error: "Zona inválida." });
-  const result = await admin.from("Clientes").select("*").eq("ZONA", zone.data).order("created_at", { ascending: false });
+  if (!method(req, res, ["GET", "POST"])) return;
+  const actor = await authorize(req, res);
+  if (!actor) return;
+  if (req.method === "POST") return createClient(req, res, actor);
+
+  const zoneParam = parameter(req.query.zone);
+  const zone = zoneParam ? z.enum(["Zona Cinza", "Zona Verde"]).safeParse(zoneParam) : null;
+  if (zone && !zone.success) return res.status(400).json({ error: "Zona inválida." });
+
+  const tagId = parameter(req.query.tagId);
+  let clientIds: number[] | null = null;
+  if (tagId) {
+    const tagLinks = await admin.from("clientes_tags").select("cliente_id").eq("tag_id", tagId);
+    if (tagLinks.error) return res.status(400).json({ error: tagLinks.error.message });
+    clientIds = (tagLinks.data || []).map(x => x.cliente_id);
+    if (!clientIds.length) return res.json([]);
+  }
+
+  let query = admin.from("Clientes").select("*").order("created_at", { ascending: false });
+  if (zone) query = query.eq("ZONA", zone.data);
+  if (clientIds) query = query.in("id", clientIds);
+  const result = await query;
   if (result.error) return res.status(400).json({ error: result.error.message });
+
   const ids = (result.data || []).map(x => x.id);
-  const links = ids.length ? await admin.from("clientes_tags").select("cliente_id,tag:tags(id,name,color)").in("cliente_id", ids) : { data: [], error: null };
+  const [links, negotiations] = await Promise.all([
+    ids.length ? admin.from("clientes_tags").select("cliente_id,tag:tags(id,name,color)").in("cliente_id", ids) : Promise.resolve({ data: [] as any[], error: null as any }),
+    ids.length ? admin.from("negotiations").select("cliente_id,course_interest,amount,consultant_id,consultant:users(name)").in("cliente_id", ids) : Promise.resolve({ data: [] as any[], error: null as any }),
+  ]);
   if (links.error && links.error.code !== "PGRST205") return res.status(400).json({ error: links.error.message });
-  const byClient = new Map<number, unknown[]>();
-  for (const link of (links.data || []) as any[]) byClient.set(link.cliente_id, [...(byClient.get(link.cliente_id) || []), link.tag]);
-  res.json((result.data || []).map(client => ({ ...client, tags: byClient.get(client.id) || [] })));
+  if (negotiations.error && !schemaPending(negotiations.error)) return res.status(400).json({ error: negotiations.error.message });
+
+  const tagsByClient = new Map<number, unknown[]>();
+  for (const link of (links.data || []) as any[]) tagsByClient.set(link.cliente_id, [...(tagsByClient.get(link.cliente_id) || []), link.tag]);
+  const negotiationByClient = new Map<number, any>();
+  for (const negotiation of (negotiations.data || []) as any[]) negotiationByClient.set(negotiation.cliente_id, negotiation);
+
+  res.json((result.data || []).map(client => {
+    const negotiation = negotiationByClient.get(client.id);
+    return {
+      ...client,
+      tags: tagsByClient.get(client.id) || [],
+      course_interest: negotiation?.course_interest ?? null,
+      amount: negotiation?.amount ?? null,
+      consultant_id: negotiation?.consultant_id ?? null,
+      consultant_name: negotiation?.consultant?.name ?? null,
+    };
+  }));
+}
+
+async function createClient(req: VercelRequest, res: VercelResponse, actor: AppUser) {
+  const parsed = clientCreateInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Revise os dados do lead." });
+  const { name, phone, email, zone, consultant_id, course_interest, stage } = parsed.data;
+
+  const basePayload: Record<string, unknown> = {
+    "nome do cliente": name,
+    "Numero do cliente": phone,
+    ZONA: zone,
+    estagio_lead: stage,
+  };
+
+  let inserted = await admin.from("Clientes").insert({ ...basePayload, email: email || null }).select().single();
+  if (inserted.error && schemaPending(inserted.error)) {
+    inserted = await admin.from("Clientes").insert(basePayload).select().single();
+  }
+  if (inserted.error) return res.status(400).json({ error: inserted.error.message });
+
+  if (course_interest || consultant_id) {
+    const negotiationInsert = await admin.from("negotiations").insert({
+      cliente_id: inserted.data.id,
+      course_interest: course_interest || null,
+      consultant_id: consultant_id || null,
+      status: "ativa",
+    });
+    if (negotiationInsert.error) console.error("[crm:create-client:negotiation]", negotiationInsert.error);
+  }
+
+  console.info(`[crm] Lead ${inserted.data.id} criado por ${actor.id}`);
+  return res.status(201).json(inserted.data);
 }
 
 export async function clientStage(req: VercelRequest, res: VercelResponse) {
