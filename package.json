@@ -1,0 +1,23 @@
+{
+  "name": "eazyleads-crm",
+  "private": true,
+  "workspaces": ["frontend", "backend"],
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "dev:vercel": "node --env-file-if-exists=.env.local ./node_modules/vercel/dist/index.js dev",
+    "build": "npm run build -w frontend && tsc -p api/tsconfig.json --noEmit",
+    "typecheck": "tsc -p api/tsconfig.json --noEmit && npm run typecheck -w frontend"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "@vercel/node": "^5.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vercel": "^48.8.0"
+  }
+}

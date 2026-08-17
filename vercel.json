@@ -1,0 +1,30 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "devCommand": "vite --config vite.config.ts --port $PORT",
+  "buildCommand": "npm run build -w frontend",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    {
+      "source": "/api/users/:route*",
+      "destination": "/api/users?route=:route"
+    },
+    {
+      "source": "/api/crm/:route*",
+      "destination": "/api/crm?route=:route"
+    },
+    {
+      "source": "/api/configuration/:route*",
+      "destination": "/api/configuration?route=:route"
+    },
+    {
+      "source": "/:path((?!api(?:/|$)|src(?:/|$)|@vite(?:/|$)|@react-refresh(?:/|$)|@fs(?:/|$)|node_modules(?:/|$)).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/*.ts": {
+      "maxDuration": 30
+    }
+  }
+}
